@@ -1,0 +1,20 @@
+{
+  "name": "botwa5",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bot,js",
+  "scripts": {
+    "start": "bot.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@adiwajshing/baileys": "^5.0.0",
+    "@vitalets/google-translate-api": "^9.2.0",
+    "express": "^4.21.1",
+    "moment": "^2.30.1",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}
