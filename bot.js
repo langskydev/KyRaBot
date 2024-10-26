@@ -13,10 +13,14 @@ client.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
 });
 
+
 // Konfirmasi bahwa bot sudah siap
 client.on('ready', () => {
     console.log('Bot sudah siap dan berjalan!');
 });
+
+// Membatasi bot hanya aktif pada grup tertentu
+const allowedGroups = ['120363348122136023@g.us']; 
 
 // Path file untuk menyimpan data transaksi dan menu
 const transaksiFilePath = path.join(__dirname, 'transaksi.json');
@@ -91,107 +95,20 @@ setInterval(() => {
     removeInactiveUsers();
 }, 24 * 60 * 60 * 1000); // Setiap 24 jam
 
-// Variabel untuk menyimpan status produk terjadwal
-let isProductScheduled = false;
-let productMessage = '';
-let productInterval;
-
-// Fungsi untuk mengirim produk ke semua grup kecuali grup admin
-async function sendProductToAllGroups(media) {
-    const chats = await client.getChats();
-    const groupChats = chats.filter(chat => chat.isGroup && !chat.name.toLowerCase().includes('admin'));
-
-    for (const groupChat of groupChats) {
-        if (media) {
-            await groupChat.sendMessage(media, { caption: productMessage });
-        } else {
-            await groupChat.sendMessage(productMessage);
-        }
-    }
-}
-
 // Menambahkan produk melalui pesan
 client.on('message', async (message) => {
     const adminNumber = '6285714608649@c.us';
     const content = message.body;
+    const chat = await message.getChat();
 
-    // Cek apakah pesan berasal dari admin
-    if (message.author === adminNumber || message.from === adminNumber) {
-        try {
-            // Jika pesan adalah 'allhelps'
-            if (content.toLowerCase() === 'allhelps') {
-                const helpMessage = `
-Berikut adalah daftar semua fitur bot dan cara penggunaannya:
-1. menu - Menampilkan menu utama bot.
-2. add - Menambahkan item baru.
-3. update - Memperbarui item yang sudah ada.
-4. delete - Menghapus item yang ada.
-5. rename - Mengganti nama item.
-6. h - Menampilkan bantuan singkat.
-7. promote - Mempromosikan pengguna.
-8. produk |<pesan> - Menjadwalkan pesan produk yang akan dikirim ke semua grup (kecuali grup admin) setiap 1 menit.
-9. stop produk - Menghentikan pengiriman pesan produk yang terjadwal.
-10. giveaway - Menjalankan fitur giveaway.
-11. P. D - Mengirimkan pesan darurat.
-12. cl - Membersihkan log chat.
-13. op - Menjalankan operasi khusus.
-14. payment - Mengelola pembayaran.
-15. allhelps - Menampilkan daftar fitur bot dan cara penggunaannya (hanya bisa digunakan oleh admin).
-                `;
-                await message.reply(helpMessage);
-            }
-
-            // Jika pesan dimulai dengan 'produk |'
-            if (content.toLowerCase().startsWith('produk |')) {
-                productMessage = content.split('|')[1].trim();
-                isProductScheduled = true;
-                let media = null;
-
-                if (message.hasMedia) {
-                    media = await message.downloadMedia();
-                }
-
-                await message.reply('Produk berhasil dijadwalkan dan akan dikirim ke semua grup (kecuali grup admin) setiap 1 menit.');
-
-                // Set interval untuk mengirim produk setiap 1 menit
-                productInterval = setInterval(async () => {
-                    if (isProductScheduled) {
-                        try {
-                            await sendProductToAllGroups(media);
-                        } catch (error) {
-                            console.error('Error saat mengirim produk ke grup:', error);
-                        }
-                    }
-                }, 60000);
-            }
-
-            // Jika pesan adalah 'stop produk'
-            if (content.toLowerCase() === 'stop produk') {
-                if (isProductScheduled) {
-                    isProductScheduled = false;
-                    clearInterval(productInterval);
-                    await message.reply('Pengiriman produk terjadwal telah dihentikan.');
-                } else {
-                    await message.reply('Tidak ada produk yang sedang dijadwalkan.');
-                }
-            }
-        } catch (error) {
-            console.error('Error saat memproses perintah admin:', error);
-            await message.reply('Terjadi kesalahan saat memproses perintah admin.');
-        }
-    } else {
-        // Jika pengguna bukan admin dan mencoba menggunakan fitur khusus admin
-        if (content.toLowerCase().startsWith('produk |') || content.toLowerCase() === 'stop produk') {
-            await message.reply('Fitur ini khusus untuk admin.');
-        }
+    // Membatasi bot hanya merespon di grup yang diizinkan
+    if (chat.isGroup && !allowedGroups.includes(chat.id._serialized)) {
+        return;
     }
-});
 
-// Menambahkan produk melalui pesan
-client.on('message', async (message) => {
-    const adminNumber = '6285714608649@c.us';
-    const content = message.body;
-
+    // Cek apakah pengirim adalah admin
+    const fromAdmin = message.author === adminNumber || message.from === adminNumber;
+    
     // Definisikan fungsi removeInappropriateMessages untuk menghindari error
     async function removeInappropriateMessages(message) {
         // Contoh logika untuk menghapus pesan yang tidak pantas atau promosi
@@ -200,7 +117,6 @@ client.on('message', async (message) => {
 
         if (inappropriateKeywords.some(keyword => message.body.toLowerCase().includes(keyword)) || promotionRegex.test(message.body)) {
             await message.delete(true); // Menghapus pesan untuk semua orang
-            const chat = await message.getChat();
             if (chat.isGroup) {
                 const participant = await client.getContactById(message.author || message.from);
                 await chat.sendMessage(`@${participant.id.user}, pesan Anda melanggar aturan grup dan telah dihapus. Anda mendapatkan SP1.`, {
@@ -221,8 +137,11 @@ client.on('message', async (message) => {
         }
     }
 
-    // Hapus pesan yang tidak pantas atau promosi
-    await removeInappropriateMessages(message);
+    // Hanya admin yang dapat mengirimkan larangan
+    if (fromAdmin) {
+        // Hapus pesan yang tidak pantas atau promosi
+        await removeInappropriateMessages(message);
+    }
 
 
     // Cek apakah pesan berasal dari admin
@@ -326,24 +245,6 @@ client.on('message', async (message) => {
                 }
             }
 
-            // Jika pesan dimulai dengan 'promote|'
-            if (content.toLowerCase().startsWith('promote|')) {
-                const [, keterangan] = content.match(/^promote\|(.*)/is) || [];
-
-                if (keterangan) {
-                    const chats = await client.getChats();
-                    const groupChats = chats.filter(chat => chat.isGroup && chat.id._serialized !== message.from);
-
-                    for (const groupChat of groupChats) {
-                        await groupChat.sendMessage(keterangan);
-                    }
-
-                    await message.reply('Promosi berhasil dikirim ke semua grup kecuali grup admin.');
-                } else {
-                    await message.reply('Format tidak sesuai. Gunakan format: promote|keterangan');
-                }
-            }
-
             // Jika pesan dimulai dengan 'giveaway'
             if (content.toLowerCase().startsWith('giveaway')) {
                 const [, jumlahPemenang] = content.match(/^giveaway\s+(\d+)/) || [];
@@ -392,47 +293,47 @@ client.on('message', async (message) => {
         }
     } else {
         // Jika pengguna bukan admin dan mencoba menggunakan fitur khusus admin
-        if (content.toLowerCase().startsWith('add ') || content.toLowerCase().startsWith('delete ') || content.toLowerCase().startsWith('updated ') || content.toLowerCase().startsWith('rename ') || content.toLowerCase().startsWith('h ') || content.toLowerCase().startsWith('promote|') || content.toLowerCase().startsWith('giveaway')) {
+        if (content.toLowerCase().startsWith('add ') || content.toLowerCase().startsWith('delete ') || content.toLowerCase().startsWith('updated ') || content.toLowerCase().startsWith('rename ') || content.toLowerCase().startsWith('h ') || content.toLowerCase().startsWith('giveaway')) {
             await message.reply('Fitur ini khusus untuk admin.');
         }
     }
 });
 
 // Ketika ada anggota yang masuk ke grup
-client.on('group_join', (notification) => {
+client.on('group_join', async (notification) => {
     const chatId = notification.id.remote;
-    const userName = notification.recipientIds[0];
+    const userId = notification.recipientIds[0];
+
+    // Mengambil informasi tentang grup dan anggota yang masuk
+    const chat = await client.getChatById(chatId);
+    const contact = await client.getContactById(userId);
+
+    // Membatasi bot hanya merespon di grup yang diizinkan
+    if (!chat.isGroup || !allowedGroups.includes(chat.id._serialized)) {
+        return;
+    }
 
     // Mengirimkan pesan selamat datang
     const welcomeMessage = `
 ✨ Selamat datang di KyPay Store ✨
 
-Halo @${userName}, selamat bergabung! 🎮🔑
+Halo @${contact.pushname || contact.number}, selamat bergabung! 🎮🔑
 
 Di sini kamu bisa menemukan penawaran terbaik untuk top up game dan aplikasi premium favoritmu. Jangan ragu untuk bertanya dan cek penawaran menarik kami! 🔥💰
 `;
 
-    client.sendMessage(chatId, welcomeMessage, { mentions: [userName] });
+    await chat.sendMessage(welcomeMessage, { mentions: [contact] });
 });
-
-// Ketika ada anggota yang keluar dari grup
-client.on('group_leave', (notification) => {
-    const chatId = notification.id.remote;
-    const userName = notification.participant;
-
-    // Mengirimkan pesan perpisahan
-    const farewellMessage = `
-👋 Selamat jalan, @${userName}. Kami akan merindukanmu di KyPay Store! Semoga sukses selalu di mana pun kamu berada. 🙌✨
-`;
-
-    client.sendMessage(chatId, farewellMessage, { mentions: [userName] });
-});
-
 
 // Menutup grup jika admin mengetikkan 'cl'
 client.on('message', async (message) => {
     const chat = await message.getChat();
     const adminNumbers = ['6285714608649@c.us'];
+
+    // Membatasi bot hanya merespon di grup yang diizinkan
+    if (chat.isGroup && !allowedGroups.includes(chat.id._serialized)) {
+        return;
+    }
 
     if (message.body.toLowerCase() === 'cl' && chat.isGroup) {
         if (adminNumbers.includes(message.author || message.from)) {
