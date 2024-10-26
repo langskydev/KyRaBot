@@ -20,7 +20,10 @@ client.on('ready', () => {
 });
 
 // Membatasi bot hanya aktif pada grup tertentu
-const allowedGroups = ['120363348122136023@g.us']; 
+const allowedGroups = ['120363348122136023@g.us'];
+const excludedGroups = ['120363348122136023@g.us'];
+
+let promoteInterval = null; // Variabel untuk menyimpan interval promote
 
 // Path file untuk menyimpan data transaksi dan menu
 const transaksiFilePath = path.join(__dirname, 'transaksi.json');
@@ -95,6 +98,20 @@ setInterval(() => {
     removeInactiveUsers();
 }, 24 * 60 * 60 * 1000); // Setiap 24 jam
 
+// Fungsi untuk mengirim pesan ke semua grup kecuali grup yang dikecualikan
+async function promoteToAllGroups(message, media = null) {
+    const chats = await client.getChats();
+    const groupChats = chats.filter(chat => chat.isGroup && !excludedGroups.includes(chat.id._serialized));
+
+    for (const groupChat of groupChats) {
+        if (media) {
+            await groupChat.sendMessage(media, { caption: message });
+        } else {
+            await groupChat.sendMessage(message);
+        }
+    }
+}
+
 // Menambahkan produk melalui pesan
 client.on('message', async (message) => {
     const adminNumber = '6285714608649@c.us';
@@ -108,7 +125,7 @@ client.on('message', async (message) => {
 
     // Cek apakah pengirim adalah admin
     const fromAdmin = message.author === adminNumber || message.from === adminNumber;
-    
+
     // Definisikan fungsi removeInappropriateMessages untuk menghindari error
     async function removeInappropriateMessages(message) {
         // Contoh logika untuk menghapus pesan yang tidak pantas atau promosi
@@ -227,6 +244,45 @@ client.on('message', async (message) => {
                 }
             }
 
+            // Cek apakah pesan berasal dari admin
+    if (message.author === adminNumber || message.from === adminNumber) {
+        if (content.toLowerCase().startsWith('promote|')) {
+            const [, keterangan] = content.split('|');
+            if (keterangan) {
+                let media = null;
+                if (message.hasMedia) {
+                    media = await message.downloadMedia();
+                }
+
+                // Kirimkan pesan ke semua grup terlebih dahulu
+                await promoteToAllGroups(keterangan.trim(), media);
+
+                // Jika ada interval promote yang berjalan, hentikan terlebih dahulu
+                if (promoteInterval !== null) {
+                    clearInterval(promoteInterval);
+                }
+
+                // Jadwalkan pengiriman ulang setiap 30 menit
+                promoteInterval = setInterval(async () => {
+                    await promoteToAllGroups(keterangan.trim(), media);
+                }, 30 * 60 * 1000); // 30 menit
+
+                await message.reply('Promosi telah dikirim ke semua grup yang diizinkan dan akan dikirim ulang setiap 30 menit.');
+            } else {
+                await message.reply('Format tidak sesuai. Gunakan format: promote|keterangan');
+            }
+        } else if (content.toLowerCase() === 'stop') {
+            // Menghentikan fitur promote
+            if (promoteInterval !== null) {
+                clearInterval(promoteInterval);
+                promoteInterval = null;
+                await message.reply('Fitur promote telah dihentikan.');
+            } else {
+                await message.reply('Tidak ada promosi yang sedang berjalan.');
+            }
+        }
+    }
+
             // Jika pesan dimulai dengan 'h '
             if (content.toLowerCase().startsWith('h ')) {
                 const [, keterangan] = content.match(/^h\s+(.*)/is) || [];
@@ -293,7 +349,7 @@ client.on('message', async (message) => {
         }
     } else {
         // Jika pengguna bukan admin dan mencoba menggunakan fitur khusus admin
-        if (content.toLowerCase().startsWith('add ') || content.toLowerCase().startsWith('delete ') || content.toLowerCase().startsWith('updated ') || content.toLowerCase().startsWith('rename ') || content.toLowerCase().startsWith('h ') || content.toLowerCase().startsWith('giveaway')) {
+        if (content.toLowerCase().startsWith('add ') || content.toLowerCase().startsWith('delete ') || content.toLowerCase().startsWith('updated ') || content.toLowerCase().startsWith('rename ') || content.toLowerCase().startsWith('h ') || content.toLowerCase().startsWith('promote ') || content.toLowerCase().startsWith('stop ') || content.toLowerCase().startsWith('giveaway')) {
             await message.reply('Fitur ini khusus untuk admin.');
         }
     }
