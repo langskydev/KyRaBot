@@ -123,44 +123,6 @@ client.on('message', async (message) => {
         return;
     }
 
-    // Cek apakah pengirim adalah admin
-    const fromAdmin = message.author === adminNumber || message.from === adminNumber;
-
-    // Definisikan fungsi removeInappropriateMessages untuk menghindari error
-    async function removeInappropriateMessages(message) {
-        // Contoh logika untuk menghapus pesan yang tidak pantas atau promosi
-        const inappropriateKeywords = ['promosi', 'iklan', 'spam'];
-        const promotionRegex = /Rp\s?\d{1,3}(\.\d{3})*(\.000)?|\d+(\.\d+)?[kK]|\d+[rR][bB]|\b(bot|nomor whatsapp)\b/i;
-
-        if (inappropriateKeywords.some(keyword => message.body.toLowerCase().includes(keyword)) || promotionRegex.test(message.body)) {
-            await message.delete(true); // Menghapus pesan untuk semua orang
-            if (chat.isGroup) {
-                const participant = await client.getContactById(message.author || message.from);
-                await chat.sendMessage(`@${participant.id.user}, pesan Anda melanggar aturan grup dan telah dihapus. Anda mendapatkan SP1.`, {
-                    mentions: [participant.id._serialized]
-                });
-
-                // Simpan status peringatan pengguna
-                if (!participant.warningCount) participant.warningCount = 0;
-                participant.warningCount++;
-
-                if (participant.warningCount >= 2) {
-                    await chat.sendMessage(`@${participant.id.user} telah melanggar aturan grup sebanyak 2 kali dan akan dikeluarkan dari grup.`, {
-                        mentions: [participant.id._serialized]
-                    });
-                    await chat.removeParticipants([participant.id._serialized]);
-                }
-            }
-        }
-    }
-
-    // Hanya admin yang dapat mengirimkan larangan
-    if (fromAdmin) {
-        // Hapus pesan yang tidak pantas atau promosi
-        await removeInappropriateMessages(message);
-    }
-
-
     // Cek apakah pesan berasal dari admin
     if (message.author === adminNumber || message.from === adminNumber) {
         try {
@@ -245,43 +207,43 @@ client.on('message', async (message) => {
             }
 
             // Cek apakah pesan berasal dari admin
-    if (message.author === adminNumber || message.from === adminNumber) {
-        if (content.toLowerCase().startsWith('promote|')) {
-            const [, keterangan] = content.split('|');
-            if (keterangan) {
-                let media = null;
-                if (message.hasMedia) {
-                    media = await message.downloadMedia();
+            if (message.author === adminNumber || message.from === adminNumber) {
+                if (content.toLowerCase().startsWith('promote|')) {
+                    const [, keterangan] = content.split('|');
+                    if (keterangan) {
+                        let media = null;
+                        if (message.hasMedia) {
+                            media = await message.downloadMedia();
+                        }
+
+                        // Kirimkan pesan ke semua grup terlebih dahulu
+                        await promoteToAllGroups(keterangan.trim(), media);
+
+                        // Jika ada interval promote yang berjalan, hentikan terlebih dahulu
+                        if (promoteInterval !== null) {
+                            clearInterval(promoteInterval);
+                        }
+
+                        // Jadwalkan pengiriman ulang setiap 30 menit
+                        promoteInterval = setInterval(async () => {
+                            await promoteToAllGroups(keterangan.trim(), media);
+                        }, 30 * 60 * 1000); // 30 menit
+
+                        await message.reply('Promosi telah dikirim ke semua grup yang diizinkan dan akan dikirim ulang setiap 30 menit.');
+                    } else {
+                        await message.reply('Format tidak sesuai. Gunakan format: promote|keterangan');
+                    }
+                } else if (content.toLowerCase() === 'stop') {
+                    // Menghentikan fitur promote
+                    if (promoteInterval !== null) {
+                        clearInterval(promoteInterval);
+                        promoteInterval = null;
+                        await message.reply('Fitur promote telah dihentikan.');
+                    } else {
+                        await message.reply('Tidak ada promosi yang sedang berjalan.');
+                    }
                 }
-
-                // Kirimkan pesan ke semua grup terlebih dahulu
-                await promoteToAllGroups(keterangan.trim(), media);
-
-                // Jika ada interval promote yang berjalan, hentikan terlebih dahulu
-                if (promoteInterval !== null) {
-                    clearInterval(promoteInterval);
-                }
-
-                // Jadwalkan pengiriman ulang setiap 30 menit
-                promoteInterval = setInterval(async () => {
-                    await promoteToAllGroups(keterangan.trim(), media);
-                }, 30 * 60 * 1000); // 30 menit
-
-                await message.reply('Promosi telah dikirim ke semua grup yang diizinkan dan akan dikirim ulang setiap 30 menit.');
-            } else {
-                await message.reply('Format tidak sesuai. Gunakan format: promote|keterangan');
             }
-        } else if (content.toLowerCase() === 'stop') {
-            // Menghentikan fitur promote
-            if (promoteInterval !== null) {
-                clearInterval(promoteInterval);
-                promoteInterval = null;
-                await message.reply('Fitur promote telah dihentikan.');
-            } else {
-                await message.reply('Tidak ada promosi yang sedang berjalan.');
-            }
-        }
-    }
 
             // Jika pesan dimulai dengan 'h '
             if (content.toLowerCase().startsWith('h ')) {
@@ -650,13 +612,21 @@ Jumlah Transaksi : ${jumlahTransaksi}
 
     // Hapus link yang berisi http, https, atau wa.me dan kick anggota yang mengirimkannya
     if ((message.body.includes('http://') || message.body.includes('https://') || message.body.includes('wa.me')) && chat.isGroup) {
+        const contact = await message.getContact();
+
+        // Periksa apakah pengirim adalah admin
+        if (adminNumbers.includes(contact.id._serialized)) {
+            // Jika pengirim adalah admin, tidak perlu melakukan apa-apa
+            return;
+        }
+
+        // Jika pengirim bukan admin, kirim pesan peringatan, hapus pesan, dan kick
         const warningMessage = `
 ANTI LINK 「 📵 」
 
 Link terdeteksi, maaf kamu akan di kick !
 `;
         message.reply(warningMessage);
-        const contact = await message.getContact();
         await chat.removeParticipants([contact.id._serialized]);
         await message.delete(true);
     }
