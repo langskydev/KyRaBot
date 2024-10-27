@@ -375,7 +375,7 @@ client.on('group_join', async (notification) => {
 
 Halo @${contact.pushname || contact.number}, selamat bergabung! 🎮🔑
 
-Di sini kamu bisa menemukan penawaran terbaik untuk top up game dan aplikasi premium favoritmu. Jangan ragu untuk bertanya dan cek penawaran menarik kami! 🔥💰
+Di sini kamu bisa menemukan penawaran terbaik untuk top up game dan aplikasi premium favoritmu dengan cara ketik?*menu*. Jangan ragu untuk bertanya dan cek penawaran menarik kami! 🔥💰
 `;
 
     await chat.sendMessage(welcomeMessage, { mentions: [contact] });
