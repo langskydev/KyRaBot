@@ -10,7 +10,7 @@ const client = new Client({
 });
 
 // Define the group ID and the allowed group admin ID
-const groupId = '120363348122136023@g.us';
+const groupId = '120363336251818783@g.us';
 const allowedNumber = '6285714608649';
 
 // Load existing payment options from JSON file
@@ -127,7 +127,7 @@ client.on('group_join', async (notification) => {
     const contact = await client.getContactById(notification.recipientIds[0]);
 
     // Hanya aktif di grup dengan ID berikut
-    if (notification.chatId === '120363348122136023@g.us') {
+    if (notification.chatId === '120363336251818783@g.us') {
         // Pesan sambutan untuk anggota yang baru masuk
         const welcomeMessage = `
 *✨ Selamat datang di KyPay Store ✨*
@@ -150,7 +150,7 @@ client.on('message', async (msg) => {
     const chat = await msg.getChat();
 
     // Hanya aktif di grup dengan ID berikut
-    if (chat.id._serialized === '120363348122136023@g.us') {
+    if (chat.id._serialized === '120363336251818783@g.us') {
         switch (true) {
             case (msg.hasMedia && msg.body === '#setpp'): {
                 const isAdmin = msg.author === undefined || chat.participants.find(participant => participant.id._serialized === msg.author).isAdmin;
@@ -327,7 +327,7 @@ client.on('message', async (msg) => {
     }
 
     // Batasi fitur hanya untuk grup tertentu
-    if (chat.isGroup && chat.id._serialized === '120363348122136023@g.us') {
+    if (chat.isGroup && chat.id._serialized === '120363336251818783@g.us') {
         switch (msg.body.toLowerCase()) {
             case 'menu':
                 let serviceList = `Halo Kak @${msg.author || msg.from}! 👋
@@ -912,7 +912,7 @@ client.on('message', async (message) => {
 
 // Event handler untuk pesan yang diterima
 client.on('message', async (message) => {
-    const groupId = '120363348122136023@g.us';
+    const groupId = '120363336251818783@g.us';
     const chat = await message.getChat();
 
     // Mengecek apakah pesan berasal dari grup dengan ID yang diberikan
@@ -984,129 +984,123 @@ client.on('message', async (message) => {
 });
 
 client.on('message', async (msg) => {
-    if (msg.from === groupId) {
-        const chat = await msg.getChat();
-        const author = msg.author || msg.from;
-        const contact = await client.getContactById(author);
-        const isAdmin = chat.participants.find(
-            (participant) => participant.id._serialized === author && participant.isAdmin
-        );
+    const chat = await msg.getChat();
+    const author = msg.author || msg.from;
+    const contact = await client.getContactById(author);
+    const isAdmin = chat.participants && chat.participants.find(
+        (participant) => participant.id._serialized === author && participant.isAdmin
+    );
 
-        const messageParts = msg.body.toLowerCase().split('|').map(part => part.trim());
+    const messageParts = msg.body.toLowerCase().split('|').map(part => part.trim());
 
-        switch (messageParts[0]) {
-            case 'add badword':
-                if (chat.isGroup) {
-                    if (!isAdmin) {
-                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                        return;
-                    }
+    switch (messageParts[0]) {
+        case 'add badword':
+            if (!chat.isGroup) {
+                // Prompt admin to add badwords
+                msg.reply(
+                    'Ketikkan apa saja kata-kata yang dilarang, dipisahkan dengan baris baru (contoh:\nKontol\nMemek)'
+                );
+                awaitingBadwordInput = true;
+            } else {
+                msg.reply('Perintah ini hanya dapat digunakan di chat pribadi dengan bot.');
+            }
+            break;
 
-                    // Prompt admin to add badwords
-                    msg.reply(
-                        'Ketikkan apa saja kata-kata yang dilarang, dipisahkan dengan baris baru (contoh:\nKontol\nMemek)'
-                    );
-                    awaitingBadwordInput = true;
+        case 'deletebadword':
+            if (!chat.isGroup) {
+                if (messageParts.length < 2) {
+                    msg.reply('Harap cantumkan kata yang ingin dihapus. Contoh: deletebadword | kata');
+                    return;
                 }
-                break;
 
-            case 'deletebadword':
-                if (chat.isGroup) {
-                    if (!isAdmin) {
-                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                        return;
-                    }
+                const wordToDelete = messageParts[1];
+                const index = badwords.findIndex((badword) => badword.toLowerCase() === wordToDelete.toLowerCase());
 
-                    if (messageParts.length < 2) {
-                        msg.reply('Harap cantumkan kata yang ingin dihapus. Contoh: deletebadword | kata');
-                        return;
-                    }
-
-                    const wordToDelete = messageParts[1];
-                    const index = badwords.findIndex((badword) => badword.toLowerCase() === wordToDelete.toLowerCase());
-
-                    if (index !== -1) {
-                        badwords.splice(index, 1);
-
-                        // Save updated badwords to JSON file
-                        fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
-                            if (err) {
-                                console.error('Error saving badwords:', err);
-                                msg.reply('Gagal menghapus kata-kata terlarang.');
-                            } else {
-                                msg.reply(`Kata "${wordToDelete}" berhasil dihapus dari daftar kata-kata terlarang.`);
-                            }
-                        });
-                    } else {
-                        msg.reply(`Kata "${wordToDelete}" tidak ditemukan dalam daftar kata-kata terlarang.`);
-                    }
-                }
-                break;
-
-            case 'listbadword':
-                if (chat.isGroup) {
-                    if (!isAdmin) {
-                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                        return;
-                    }
-
-                    if (badwords.length === 0) {
-                        msg.reply('Tidak ada kata-kata terlarang yang terdaftar.');
-                    } else {
-                        msg.reply(`Daftar kata-kata terlarang saat ini:\n${badwords.join('\n')}`);
-                    }
-                }
-                break;
-
-            case 'antibadwordon':
-                if (chat.isGroup) {
-                    if (!isAdmin) {
-                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                        return;
-                    }
-                    antibadwordEnabled = true;
-                    msg.reply('Fitur anti kata-kata terlarang telah diaktifkan.');
-                }
-                break;
-
-            case 'antibadwordoff':
-                if (chat.isGroup) {
-                    if (!isAdmin) {
-                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                        return;
-                    }
-                    antibadwordEnabled = false;
-                    msg.reply('Fitur anti kata-kata terlarang telah dinonaktifkan.');
-                }
-                break;
-
-            default:
-                if (awaitingBadwordInput && isAdmin) {
-                    const badwordMessage = msg.body;
-                    const newBadwords = badwordMessage.split('\n');
-                    badwords.push(...newBadwords);
-                    awaitingBadwordInput = false;
+                if (index !== -1) {
+                    badwords.splice(index, 1);
 
                     // Save updated badwords to JSON file
                     fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
                         if (err) {
                             console.error('Error saving badwords:', err);
-                            msg.reply('Gagal menyimpan kata-kata terlarang baru.');
+                            msg.reply('Gagal menghapus kata-kata terlarang.');
                         } else {
-                            msg.reply('Kata-kata terlarang berhasil ditambahkan.');
+                            msg.reply(`Kata "${wordToDelete}" berhasil dihapus dari daftar kata-kata terlarang.`);
                         }
                     });
                 } else {
-                    // Check message against badwords and delete if necessary
-                    if (antibadwordEnabled && badwords.some((badword) => msg.body.toLowerCase().includes(badword.toLowerCase()))) {
-                        if (!isAdmin || messageParts[0] !== 'add badword') {
-                            await msg.delete(true);
-                            msg.reply('Pesan ini mengandung kata-kata yang tidak diperbolehkan dan telah dihapus. Mohon perhatikan bahasa Anda.');
-                        }
+                    msg.reply(`Kata "${wordToDelete}" tidak ditemukan dalam daftar kata-kata terlarang.`);
+                }
+            } else {
+                msg.reply('Perintah ini hanya dapat digunakan di chat pribadi dengan bot.');
+            }
+            break;
+
+        // Cases like listbadword, antibadwordon, and antibadwordoff
+        // can still be used in the group chat by admin as per your requirement.
+        case 'listbadword':
+            if (chat.isGroup) {
+                if (!isAdmin) {
+                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                    return;
+                }
+
+                if (badwords.length === 0) {
+                    msg.reply('Tidak ada kata-kata terlarang yang terdaftar.');
+                } else {
+                    msg.reply(`Daftar kata-kata terlarang saat ini:\n${badwords.join('\n')}`);
+                }
+            }
+            break;
+
+        case 'antibadwordon':
+            if (chat.isGroup) {
+                if (!isAdmin) {
+                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                    return;
+                }
+                antibadwordEnabled = true;
+                msg.reply('Fitur anti kata-kata terlarang telah diaktifkan.');
+            }
+            break;
+
+        case 'antibadwordoff':
+            if (chat.isGroup) {
+                if (!isAdmin) {
+                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                    return;
+                }
+                antibadwordEnabled = false;
+                msg.reply('Fitur anti kata-kata terlarang telah dinonaktifkan.');
+            }
+            break;
+
+        default:
+            if (awaitingBadwordInput) {
+                const badwordMessage = msg.body;
+                const newBadwords = badwordMessage.split('\n');
+                badwords.push(...newBadwords);
+                awaitingBadwordInput = false;
+
+                // Save updated badwords to JSON file
+                fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
+                    if (err) {
+                        console.error('Error saving badwords:', err);
+                        msg.reply('Gagal menyimpan kata-kata terlarang baru.');
+                    } else {
+                        msg.reply('Kata-kata terlarang berhasil ditambahkan.');
+                    }
+                });
+            } else {
+                // Check message against badwords and delete if necessary
+                if (antibadwordEnabled && badwords.some((badword) => msg.body.toLowerCase().includes(badword.toLowerCase()))) {
+                    if (!isAdmin || messageParts[0] !== 'add badword') {
+                        await msg.delete(true);
+                        msg.reply('Pesan ini mengandung kata-kata yang tidak diperbolehkan dan telah dihapus. Mohon perhatikan bahasa Anda.');
                     }
                 }
-                break;
-        }
+            }
+            break;
     }
 });
 
@@ -1206,13 +1200,78 @@ client.on('message', async msg => {
                     msg.reply('Failed to retrieve group details.');
                 }
                 break;
-
-            default:
-                msg.reply('Unknown command. Please use "promote | message", "stoppromote", or "getidgc".');
-                break;
         }
     }
 });
+
+client.on('message', async (msg) => {
+    const chat = await msg.getChat();
+
+    // If the message comes from a private chat and is from the allowed admin number
+    if (!chat.isGroup && msg.from === allowedNumber + '@c.us') {
+        if (msg.body.toLowerCase() === 'allmenu') {
+            const allMenuMessage = `
+*📋 KyPay Bot Menu:*
+
+━━━━━━━━━━━
+
+*1. 🔧 Group Management:*
+- *#setpp*: Update group profile picture.
+- *#setdesgc | [description]*: Update group description.
+- *#setname | [new name]*: Update group name.
+- *#reset*: Reset group invite link.
+- *cl*: Close group.
+- *op*: Open group.
+
+━━━━━━━━━━━
+
+*2. 🛍️ Product & Payment:*
+- *add | payment | [name] | [number] | [holder]*: Add payment option.
+- *add | [keyword] | [detail]*: Add product.
+- *update | [type] | [old] | [new details]*: Update payment/product.
+- *delete | [name/keyword]*: Delete payment/product.
+- *payment*: Show payment options.
+- *qris*: Upload QRIS image.
+
+━━━━━━━━━━━
+
+*3. 🚫 Anti-Link & Bad Words:*
+- *add badword*: Add prohibited word.
+- *deletebadword | [word]*: Remove prohibited word.
+- *listbadword*: Show bad words.
+- *antibadwordon/off*: Toggle anti-badword feature.
+
+━━━━━━━━━━━
+
+*4. 📢 Promotions:*
+- *promote | [message]*: Send promotion to groups.
+- *stoppromote*: Stop promotions.
+- *giveaway [number]*: Start giveaway & pick winners.
+
+━━━━━━━━━━━
+
+*5. 💰 Balance & Debt:*
+- *#saldo*: Show admin balance.
+- *#out [amount]*: Deduct balance.
+- *#in [amount]*: Add balance.
+- *#utang | [name] | [number] | [amount] | [due]*: Set debt reminder.
+
+━━━━━━━━━━━
+
+*6. 🛒 Orders:*
+- Send payment proof with description.
+- Use *P* (Pending) and *D* (Done) for managing orders.
+
+━━━━━━━━━━━
+
+*🌟 KyPay Bot at Your Service!*
+            `;
+
+            msg.reply(allMenuMessage);
+        }
+    }
+});
+
 
 // Menghubungkan client
 client.initialize();
