@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const Tesseract = require('tesseract.js');
+const PDFDocument = require('pdfkit'); // Add pdfkit module for PDF creation
 
 // Membuat client baru menggunakan LocalAuth untuk autentikasi
 const client = new Client({
@@ -49,12 +50,16 @@ if (!fs.existsSync(path.dirname(balanceFilePath))) {
     fs.mkdirSync(path.dirname(balanceFilePath), { recursive: true });
 }
 let balance = 0;
+let transactionHistory = [];
 if (fs.existsSync(balanceFilePath)) {
     try {
-        balance = JSON.parse(fs.readFileSync(balanceFilePath, 'utf-8')).balance;
+        const balanceData = JSON.parse(fs.readFileSync(balanceFilePath, 'utf-8'));
+        balance = balanceData.balance;
+        transactionHistory = balanceData.transactionHistory || [];
     } catch (error) {
         console.error('Error reading balance:', error);
         balance = 0;
+        transactionHistory = [];
     }
 }
 
@@ -72,7 +77,6 @@ if (fs.existsSync(debtFilePath)) {
         debtData = [];
     }
 }
-
 
 // Adding the badword and image restriction features
 const badwordFilePath = path.join(__dirname, 'data', 'admin', 'badwords.json');
@@ -110,6 +114,10 @@ if (fs.existsSync(groupDetailsFilePath)) {
 let awaitingBadwordInput = false;
 let promoteInterval = null;
 
+// Fungsi format Rupiah
+function formatRupiah(amount) {
+    return 'Rp' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
 
 // Event untuk memunculkan QR code pada terminal untuk autentikasi
 client.on('qr', (qr) => {
@@ -788,8 +796,16 @@ client.on('message', async (message) => {
                                 // Add the amount to the admin balance
                                 balance += amount;
 
-                                // Save the updated balance to the JSON file
-                                fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
+                                // Add to transaction history
+                                transactionHistory.push({
+                                    type: 'pemasukan',
+                                    amount,
+                                    source: 'Group Transfer Image',
+                                    date: new Date().toISOString()
+                                });
+
+                                // Save the updated balance and transaction history to the JSON file
+                                fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
                                     if (error) {
                                         console.error('Error saving balance:', error);
                                         message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
@@ -809,7 +825,38 @@ client.on('message', async (message) => {
         // Handle admin commands in personal chat
         switch (true) {
             case message.body === '#saldo': {
-                message.reply(`Saldo admin saat ini adalah: Rp${balance}`);
+                message.reply(`Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
+                break;
+            }
+            case message.body === '#rekaps': {
+                // Generate PDF report
+                const pdfPath = path.join(__dirname, 'data', 'admin', 'pdf', 'rekapanSaldo.pdf');
+                if (!fs.existsSync(path.dirname(pdfPath))) {
+                    fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
+                }
+                const doc = new PDFDocument();
+                doc.pipe(fs.createWriteStream(pdfPath));
+
+                doc.fontSize(16).text('Rekapan Saldo Admin', { align: 'center' });
+                doc.moveDown();
+
+                doc.fontSize(12).text(`Saldo Saat Ini: ${formatRupiah(balance)}`, { align: 'left' });
+                doc.moveDown();
+
+                doc.fontSize(12).text('Detail Transaksi:', { align: 'left' });
+                transactionHistory.forEach((transaction, index) => {
+                    doc.text(`${index + 1}. ${transaction.type} - ${formatRupiah(transaction.amount)} - ${transaction.source} - ${transaction.date}`, {
+                        align: 'left'
+                    });
+                });
+
+                doc.end();
+
+                // Send the PDF file
+                setTimeout(() => {
+                    const media = MessageMedia.fromFilePath(pdfPath);
+                    client.sendMessage(message.from, media);
+                }, 1000);
                 break;
             }
             case message.body.startsWith('#out'): {
@@ -821,13 +868,21 @@ client.on('message', async (message) => {
                         // Deduct the amount from the admin balance
                         balance -= outAmount;
 
-                        // Save the updated balance to the JSON file
-                        fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
+                        // Add to transaction history
+                        transactionHistory.push({
+                            type: 'pengeluaran',
+                            amount: outAmount,
+                            source: 'Manual Deduction',
+                            date: new Date().toISOString()
+                        });
+
+                        // Save the updated balance and transaction history to the JSON file
+                        fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
                             if (error) {
                                 console.error('Error saving balance:', error);
                                 message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
                             } else {
-                                message.reply(`Saldo berhasil dikurangi sebesar: Rp${outAmount}. Saldo admin saat ini adalah: Rp${balance}`);
+                                message.reply(`Saldo berhasil dikurangi sebesar: ${formatRupiah(outAmount)}. Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
                             }
                         });
                     } else {
@@ -846,13 +901,21 @@ client.on('message', async (message) => {
                     // Add the amount to the admin balance
                     balance += inAmount;
 
-                    // Save the updated balance to the JSON file
-                    fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
+                    // Add to transaction history
+                    transactionHistory.push({
+                        type: 'pemasukan',
+                        amount: inAmount,
+                        source: 'Manual Addition',
+                        date: new Date().toISOString()
+                    });
+
+                    // Save the updated balance and transaction history to the JSON file
+                    fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
                         if (error) {
                             console.error('Error saving balance:', error);
                             message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
                         } else {
-                            message.reply(`Saldo berhasil ditambahkan sebesar: Rp${inAmount}. Saldo admin saat ini adalah: Rp${balance}`);
+                            message.reply(`Saldo berhasil ditambahkan sebesar: ${formatRupiah(inAmount)}. Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
                         }
                     });
                 } else {
@@ -865,7 +928,7 @@ client.on('message', async (message) => {
                 if (args.length === 5) {
                     const [_, namaPengutang, nomorWhatsApp, totalUtang, jatuhTempo] = args;
                     const contactNumber = nomorWhatsApp.replace(/^0/, '+62'); // Assuming Indonesian numbers
-                    const reminderMessage = `Halo ${namaPengutang}, ini adalah pengingat bahwa Anda memiliki utang sebesar Rp${totalUtang} yang jatuh tempo pada tanggal ${jatuhTempo}. Mohon segera melakukan pembayaran. Terima kasih.`;
+                    const reminderMessage = `Halo ${namaPengutang}, ini adalah pengingat bahwa Anda memiliki utang sebesar ${formatRupiah(totalUtang)} yang jatuh tempo pada tanggal ${jatuhTempo}. Mohon segera melakukan pembayaran. Terima kasih.`;
 
                     // Save debt information to the debt file
                     debtData.push({
@@ -909,6 +972,7 @@ client.on('message', async (message) => {
         }
     }
 });
+
 
 // Event handler untuk pesan yang diterima
 client.on('message', async (message) => {
@@ -1255,6 +1319,7 @@ client.on('message', async (msg) => {
 - *#out [amount]*: Deduct balance.
 - *#in [amount]*: Add balance.
 - *#utang | [name] | [number] | [amount] | [due]*: Set debt reminder.
+- *#rekaps : summarize all admin financial data
 
 ━━━━━━━━━━━
 
