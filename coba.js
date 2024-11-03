@@ -3,7 +3,6 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const Tesseract = require('tesseract.js');
-const PDFDocument = require('pdfkit'); // Add pdfkit module for PDF creation
 
 // Membuat client baru menggunakan LocalAuth untuk autentikasi
 const client = new Client({
@@ -50,16 +49,12 @@ if (!fs.existsSync(path.dirname(balanceFilePath))) {
     fs.mkdirSync(path.dirname(balanceFilePath), { recursive: true });
 }
 let balance = 0;
-let transactionHistory = [];
 if (fs.existsSync(balanceFilePath)) {
     try {
-        const balanceData = JSON.parse(fs.readFileSync(balanceFilePath, 'utf-8'));
-        balance = balanceData.balance;
-        transactionHistory = balanceData.transactionHistory || [];
+        balance = JSON.parse(fs.readFileSync(balanceFilePath, 'utf-8')).balance;
     } catch (error) {
         console.error('Error reading balance:', error);
         balance = 0;
-        transactionHistory = [];
     }
 }
 
@@ -77,6 +72,7 @@ if (fs.existsSync(debtFilePath)) {
         debtData = [];
     }
 }
+
 
 // Adding the badword and image restriction features
 const badwordFilePath = path.join(__dirname, 'data', 'admin', 'badwords.json');
@@ -114,10 +110,6 @@ if (fs.existsSync(groupDetailsFilePath)) {
 let awaitingBadwordInput = false;
 let promoteInterval = null;
 
-// Fungsi format Rupiah
-function formatRupiah(amount) {
-    return 'Rp' + amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
 
 // Event untuk memunculkan QR code pada terminal untuk autentikasi
 client.on('qr', (qr) => {
@@ -796,16 +788,8 @@ client.on('message', async (message) => {
                                 // Add the amount to the admin balance
                                 balance += amount;
 
-                                // Add to transaction history
-                                transactionHistory.push({
-                                    type: 'pemasukan',
-                                    amount,
-                                    source: 'Group Transfer Image',
-                                    date: new Date().toISOString()
-                                });
-
-                                // Save the updated balance and transaction history to the JSON file
-                                fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
+                                // Save the updated balance to the JSON file
+                                fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
                                     if (error) {
                                         console.error('Error saving balance:', error);
                                         message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
@@ -825,38 +809,7 @@ client.on('message', async (message) => {
         // Handle admin commands in personal chat
         switch (true) {
             case message.body === '#saldo': {
-                message.reply(`Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
-                break;
-            }
-            case message.body === '#rekaps': {
-                // Generate PDF report
-                const pdfPath = path.join(__dirname, 'data', 'admin', 'pdf', 'rekapanSaldo.pdf');
-                if (!fs.existsSync(path.dirname(pdfPath))) {
-                    fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
-                }
-                const doc = new PDFDocument();
-                doc.pipe(fs.createWriteStream(pdfPath));
-
-                doc.fontSize(16).text('Rekapan Saldo Admin', { align: 'center' });
-                doc.moveDown();
-
-                doc.fontSize(12).text(`Saldo Saat Ini: ${formatRupiah(balance)}`, { align: 'left' });
-                doc.moveDown();
-
-                doc.fontSize(12).text('Detail Transaksi:', { align: 'left' });
-                transactionHistory.forEach((transaction, index) => {
-                    doc.text(`${index + 1}. ${transaction.type} - ${formatRupiah(transaction.amount)} - ${transaction.source} - ${transaction.date}`, {
-                        align: 'left'
-                    });
-                });
-
-                doc.end();
-
-                // Send the PDF file
-                setTimeout(() => {
-                    const media = MessageMedia.fromFilePath(pdfPath);
-                    client.sendMessage(message.from, media);
-                }, 1000);
+                message.reply(`Saldo admin saat ini adalah: Rp${balance}`);
                 break;
             }
             case message.body.startsWith('#out'): {
@@ -868,21 +821,13 @@ client.on('message', async (message) => {
                         // Deduct the amount from the admin balance
                         balance -= outAmount;
 
-                        // Add to transaction history
-                        transactionHistory.push({
-                            type: 'pengeluaran',
-                            amount: outAmount,
-                            source: 'Manual Deduction',
-                            date: new Date().toISOString()
-                        });
-
-                        // Save the updated balance and transaction history to the JSON file
-                        fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
+                        // Save the updated balance to the JSON file
+                        fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
                             if (error) {
                                 console.error('Error saving balance:', error);
                                 message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
                             } else {
-                                message.reply(`Saldo berhasil dikurangi sebesar: ${formatRupiah(outAmount)}. Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
+                                message.reply(`Saldo berhasil dikurangi sebesar: Rp${outAmount}. Saldo admin saat ini adalah: Rp${balance}`);
                             }
                         });
                     } else {
@@ -901,21 +846,13 @@ client.on('message', async (message) => {
                     // Add the amount to the admin balance
                     balance += inAmount;
 
-                    // Add to transaction history
-                    transactionHistory.push({
-                        type: 'pemasukan',
-                        amount: inAmount,
-                        source: 'Manual Addition',
-                        date: new Date().toISOString()
-                    });
-
-                    // Save the updated balance and transaction history to the JSON file
-                    fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance, transactionHistory: transactionHistory }, null, 2), (error) => {
+                    // Save the updated balance to the JSON file
+                    fs.writeFile(balanceFilePath, JSON.stringify({ balance: balance }, null, 2), (error) => {
                         if (error) {
                             console.error('Error saving balance:', error);
                             message.reply('Terjadi kesalahan saat menyimpan saldo admin.');
                         } else {
-                            message.reply(`Saldo berhasil ditambahkan sebesar: ${formatRupiah(inAmount)}. Saldo admin saat ini adalah: ${formatRupiah(balance)}`);
+                            message.reply(`Saldo berhasil ditambahkan sebesar: Rp${inAmount}. Saldo admin saat ini adalah: Rp${balance}`);
                         }
                     });
                 } else {
@@ -928,7 +865,7 @@ client.on('message', async (message) => {
                 if (args.length === 5) {
                     const [_, namaPengutang, nomorWhatsApp, totalUtang, jatuhTempo] = args;
                     const contactNumber = nomorWhatsApp.replace(/^0/, '+62'); // Assuming Indonesian numbers
-                    const reminderMessage = `Halo ${namaPengutang}, ini adalah pengingat bahwa Anda memiliki utang sebesar ${formatRupiah(totalUtang)} yang jatuh tempo pada tanggal ${jatuhTempo}. Mohon segera melakukan pembayaran. Terima kasih.`;
+                    const reminderMessage = `Halo ${namaPengutang}, ini adalah pengingat bahwa Anda memiliki utang sebesar Rp${totalUtang} yang jatuh tempo pada tanggal ${jatuhTempo}. Mohon segera melakukan pembayaran. Terima kasih.`;
 
                     // Save debt information to the debt file
                     debtData.push({
@@ -1047,123 +984,129 @@ client.on('message', async (message) => {
 });
 
 client.on('message', async (msg) => {
-    const chat = await msg.getChat();
-    const author = msg.author || msg.from;
-    const contact = await client.getContactById(author);
-    const isAdmin = chat.participants && chat.participants.find(
-        (participant) => participant.id._serialized === author && participant.isAdmin
-    );
+    if (msg.from === groupId) {
+        const chat = await msg.getChat();
+        const author = msg.author || msg.from;
+        const contact = await client.getContactById(author);
+        const isAdmin = chat.participants.find(
+            (participant) => participant.id._serialized === author && participant.isAdmin
+        );
 
-    const messageParts = msg.body.toLowerCase().split('|').map(part => part.trim());
+        const messageParts = msg.body.toLowerCase().split('|').map(part => part.trim());
 
-    switch (messageParts[0]) {
-        case 'add badword':
-            if (!chat.isGroup) {
-                // Prompt admin to add badwords
-                msg.reply(
-                    'Ketikkan apa saja kata-kata yang dilarang, dipisahkan dengan baris baru (contoh:\nKontol\nMemek)'
-                );
-                awaitingBadwordInput = true;
-            } else {
-                msg.reply('Perintah ini hanya dapat digunakan di chat pribadi dengan bot.');
-            }
-            break;
+        switch (messageParts[0]) {
+            case 'add badword':
+                if (chat.isGroup) {
+                    if (!isAdmin) {
+                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                        return;
+                    }
 
-        case 'deletebadword':
-            if (!chat.isGroup) {
-                if (messageParts.length < 2) {
-                    msg.reply('Harap cantumkan kata yang ingin dihapus. Contoh: deletebadword | kata');
-                    return;
+                    // Prompt admin to add badwords
+                    msg.reply(
+                        'Ketikkan apa saja kata-kata yang dilarang, dipisahkan dengan baris baru (contoh:\nKontol\nMemek)'
+                    );
+                    awaitingBadwordInput = true;
                 }
+                break;
 
-                const wordToDelete = messageParts[1];
-                const index = badwords.findIndex((badword) => badword.toLowerCase() === wordToDelete.toLowerCase());
+            case 'deletebadword':
+                if (chat.isGroup) {
+                    if (!isAdmin) {
+                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                        return;
+                    }
 
-                if (index !== -1) {
-                    badwords.splice(index, 1);
+                    if (messageParts.length < 2) {
+                        msg.reply('Harap cantumkan kata yang ingin dihapus. Contoh: deletebadword | kata');
+                        return;
+                    }
+
+                    const wordToDelete = messageParts[1];
+                    const index = badwords.findIndex((badword) => badword.toLowerCase() === wordToDelete.toLowerCase());
+
+                    if (index !== -1) {
+                        badwords.splice(index, 1);
+
+                        // Save updated badwords to JSON file
+                        fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
+                            if (err) {
+                                console.error('Error saving badwords:', err);
+                                msg.reply('Gagal menghapus kata-kata terlarang.');
+                            } else {
+                                msg.reply(`Kata "${wordToDelete}" berhasil dihapus dari daftar kata-kata terlarang.`);
+                            }
+                        });
+                    } else {
+                        msg.reply(`Kata "${wordToDelete}" tidak ditemukan dalam daftar kata-kata terlarang.`);
+                    }
+                }
+                break;
+
+            case 'listbadword':
+                if (chat.isGroup) {
+                    if (!isAdmin) {
+                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                        return;
+                    }
+
+                    if (badwords.length === 0) {
+                        msg.reply('Tidak ada kata-kata terlarang yang terdaftar.');
+                    } else {
+                        msg.reply(`Daftar kata-kata terlarang saat ini:\n${badwords.join('\n')}`);
+                    }
+                }
+                break;
+
+            case 'antibadwordon':
+                if (chat.isGroup) {
+                    if (!isAdmin) {
+                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                        return;
+                    }
+                    antibadwordEnabled = true;
+                    msg.reply('Fitur anti kata-kata terlarang telah diaktifkan.');
+                }
+                break;
+
+            case 'antibadwordoff':
+                if (chat.isGroup) {
+                    if (!isAdmin) {
+                        msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
+                        return;
+                    }
+                    antibadwordEnabled = false;
+                    msg.reply('Fitur anti kata-kata terlarang telah dinonaktifkan.');
+                }
+                break;
+
+            default:
+                if (awaitingBadwordInput && isAdmin) {
+                    const badwordMessage = msg.body;
+                    const newBadwords = badwordMessage.split('\n');
+                    badwords.push(...newBadwords);
+                    awaitingBadwordInput = false;
 
                     // Save updated badwords to JSON file
                     fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
                         if (err) {
                             console.error('Error saving badwords:', err);
-                            msg.reply('Gagal menghapus kata-kata terlarang.');
+                            msg.reply('Gagal menyimpan kata-kata terlarang baru.');
                         } else {
-                            msg.reply(`Kata "${wordToDelete}" berhasil dihapus dari daftar kata-kata terlarang.`);
+                            msg.reply('Kata-kata terlarang berhasil ditambahkan.');
                         }
                     });
                 } else {
-                    msg.reply(`Kata "${wordToDelete}" tidak ditemukan dalam daftar kata-kata terlarang.`);
-                }
-            } else {
-                msg.reply('Perintah ini hanya dapat digunakan di chat pribadi dengan bot.');
-            }
-            break;
-
-        // Cases like listbadword, antibadwordon, and antibadwordoff
-        // can still be used in the group chat by admin as per your requirement.
-        case 'listbadword':
-            if (chat.isGroup) {
-                if (!isAdmin) {
-                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                    return;
-                }
-
-                if (badwords.length === 0) {
-                    msg.reply('Tidak ada kata-kata terlarang yang terdaftar.');
-                } else {
-                    msg.reply(`Daftar kata-kata terlarang saat ini:\n${badwords.join('\n')}`);
-                }
-            }
-            break;
-
-        case 'antibadwordon':
-            if (chat.isGroup) {
-                if (!isAdmin) {
-                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                    return;
-                }
-                antibadwordEnabled = true;
-                msg.reply('Fitur anti kata-kata terlarang telah diaktifkan.');
-            }
-            break;
-
-        case 'antibadwordoff':
-            if (chat.isGroup) {
-                if (!isAdmin) {
-                    msg.reply('Maaf, hanya admin grup yang dapat menggunakan perintah ini.');
-                    return;
-                }
-                antibadwordEnabled = false;
-                msg.reply('Fitur anti kata-kata terlarang telah dinonaktifkan.');
-            }
-            break;
-
-        default:
-            if (awaitingBadwordInput) {
-                const badwordMessage = msg.body;
-                const newBadwords = badwordMessage.split('\n');
-                badwords.push(...newBadwords);
-                awaitingBadwordInput = false;
-
-                // Save updated badwords to JSON file
-                fs.writeFile(badwordFilePath, JSON.stringify(badwords, null, 2), (err) => {
-                    if (err) {
-                        console.error('Error saving badwords:', err);
-                        msg.reply('Gagal menyimpan kata-kata terlarang baru.');
-                    } else {
-                        msg.reply('Kata-kata terlarang berhasil ditambahkan.');
-                    }
-                });
-            } else {
-                // Check message against badwords and delete if necessary
-                if (antibadwordEnabled && badwords.some((badword) => msg.body.toLowerCase().includes(badword.toLowerCase()))) {
-                    if (!isAdmin || messageParts[0] !== 'add badword') {
-                        await msg.delete(true);
-                        msg.reply('Pesan ini mengandung kata-kata yang tidak diperbolehkan dan telah dihapus. Mohon perhatikan bahasa Anda.');
+                    // Check message against badwords and delete if necessary
+                    if (antibadwordEnabled && badwords.some((badword) => msg.body.toLowerCase().includes(badword.toLowerCase()))) {
+                        if (!isAdmin || messageParts[0] !== 'add badword') {
+                            await msg.delete(true);
+                            msg.reply('Pesan ini mengandung kata-kata yang tidak diperbolehkan dan telah dihapus. Mohon perhatikan bahasa Anda.');
+                        }
                     }
                 }
-            }
-            break;
+                break;
+        }
     }
 });
 
@@ -1263,122 +1206,13 @@ client.on('message', async msg => {
                     msg.reply('Failed to retrieve group details.');
                 }
                 break;
+
+            default:
+                msg.reply('Unknown command. Please use "promote | message", "stoppromote", or "getidgc".');
+                break;
         }
     }
 });
-
-client.on('message', async (msg) => {
-    const chat = await msg.getChat();
-
-    // Hanya proses jika pesan berasal dari admin dan bukan grup
-    if (!chat.isGroup && msg.from === allowedNumber + '@c.us') {
-        const parts = msg.body.split('|');
-        if (parts[0].trim().toLowerCase() === 'generate_link') {
-            const productKeyword = parts[1]?.trim().toLowerCase();
-            if (productKeyword) {
-                // Load existing product options from JSON file
-                const productFilePath = path.join(__dirname, 'data', 'produk', 'produkOptions.json');
-                let productOptions = [];
-                if (fs.existsSync(productFilePath)) {
-                    try {
-                        productOptions = JSON.parse(fs.readFileSync(productFilePath, 'utf-8'));
-                    } catch (error) {
-                        console.error('Error reading product options:', error);
-                        msg.reply('Terjadi kesalahan saat membaca data produk.');
-                        return;
-                    }
-                }
-
-                // Cari produk berdasarkan keyword
-                const product = productOptions.find(prod => prod.keyword.toLowerCase() === productKeyword);
-                if (product) {
-                    // Generate free link produk using a public link (contoh menggunakan layanan link gratis)
-                    const productLink = `https://freeproductviewer.com/products/${encodeURIComponent(product.keyword)}`;
-                    msg.reply(`Tautan produk untuk *${product.keyword}* berhasil dibuat:
-${productLink}
-
-Silakan bagikan tautan ini di media sosial!`);
-                } else {
-                    msg.reply(`Produk dengan keyword "${productKeyword}" tidak ditemukan.`);
-                }
-            } else {
-                msg.reply('Format tidak valid. Gunakan format: generate_link | keywordproduk');
-            }
-        }
-    }
-});
-
-
-client.on('message', async (msg) => {
-    const chat = await msg.getChat();
-
-    // If the message comes from a private chat and is from the allowed admin number
-    if (!chat.isGroup && msg.from === allowedNumber + '@c.us') {
-        if (msg.body.toLowerCase() === 'allmenu') {
-            const allMenuMessage = `
-*📋 KyPay Bot Menu:*
-
-━━━━━━━━━━━
-
-*1. 🔧 Group Management:*
-- *#setpp*: Update group profile picture.
-- *#setdesgc | [description]*: Update group description.
-- *#setname | [new name]*: Update group name.
-- *#reset*: Reset group invite link.
-- *#h*: hidetag.
-- *cl*: Close group.
-- *op*: Open group.
-
-━━━━━━━━━━━
-
-*2. 🛍️ Product & Payment:*
-- *add | payment | [name] | [number] | [holder]*: Add payment option.
-- *add | [keyword] | [detail]*: Add product.
-- *update | [type] | [old] | [new details]*: Update payment/product.
-- *delete | [name/keyword]*: Delete payment/product.
-- *payment*: Show payment options.
-- *qris*: Upload QRIS image.
-
-━━━━━━━━━━━
-
-*3. 🚫 Anti-Link & Bad Words:*
-- *add badword*: Add prohibited word.
-- *deletebadword | [word]*: Remove prohibited word.
-- *listbadword*: Show bad words.
-- *antibadwordon/off*: Toggle anti-badword feature.
-
-━━━━━━━━━━━
-
-*4. 📢 Promotions:*
-- *promote | [message]*: Send promotion to groups.
-- *stoppromote*: Stop promotions.
-- *giveaway [number]*: Start giveaway & pick winners.
-
-━━━━━━━━━━━
-
-*5. 💰 Balance & Debt:*
-- *#saldo*: Show admin balance.
-- *#out [amount]*: Deduct balance.
-- *#in [amount]*: Add balance.
-- *#utang | [name] | [number] | [amount] | [due]*: Set debt reminder.
-- *#rekaps : summarize all admin financial data
-
-━━━━━━━━━━━
-
-*6. 🛒 Orders:*
-- Send payment proof with description.
-- Use *P* (Pending) and *D* (Done) for managing orders.
-
-━━━━━━━━━━━
-
-*🌟 KyPay Bot at Your Service!*
-            `;
-
-            msg.reply(allMenuMessage);
-        }
-    }
-});
-
 
 // Menghubungkan client
 client.initialize();
