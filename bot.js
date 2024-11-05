@@ -11,7 +11,8 @@ const client = new Client({
 });
 
 // Define the group ID and the allowed group admin ID
-const groupId = '120363336251818783@g.us';
+const groupId = '120363348122136023@g.us';
+const excludedGroupId = '120363348122136023@g.us';
 const allowedNumber = '6285714608649';
 
 // Load existing payment options from JSON file
@@ -112,7 +113,8 @@ if (fs.existsSync(groupDetailsFilePath)) {
 }
 
 let awaitingBadwordInput = false;
-let promoteInterval = null;
+let promotionMessage = '';
+let promotionInterval = null;
 
 // Fungsi format Rupiah
 function formatRupiah(amount) {
@@ -135,20 +137,38 @@ client.on('group_join', async (notification) => {
     const contact = await client.getContactById(notification.recipientIds[0]);
 
     // Hanya aktif di grup dengan ID berikut
-    if (notification.chatId === '120363336251818783@g.us') {
+    if (notification.chatId === '120363348122136023@g.us') {
         // Pesan sambutan untuk anggota yang baru masuk
-        const welcomeMessage = `
-*✨ Selamat datang di KyPay Store ✨*
+        const welcomeMessage = `*✨👾 Welcome to KyPay Store 👾✨*
 
-Halo @${contact.pushname || contact.number}, selamat bergabung! 🎮🔑
+Hey, @${contact.id.user}, selamat bergabung! 🎮🔑
 
-Di sini kamu bisa menemukan penawaran terbaik untuk top up game dan aplikasi premium favoritmu dengan cara ketik *?menu*. Jangan ragu untuk bertanya dan cek penawaran menarik kami! 🔥💰
+Top up game & aplikasi premium? Ketik ?menu. 💎🚀
+Siap buat pengalaman top up tanpa ribet, cepat, dan murah? Let's go! 🔥
+
+⚡️ Enjoy your stay, let's level up! ⚡️
 `;
 
         if (chat.isGroup) {
-            chat.sendMessage(welcomeMessage, {
+            await chat.sendMessage(welcomeMessage, {
                 mentions: [contact]
             });
+        }
+    }
+});
+
+// Event ketika anggota keluar atau dikeluarkan dari grup
+client.on('group_leave', async (notification) => {
+    const chat = await client.getChatById(notification.chatId);
+    const contact = await client.getContactById(notification.recipientIds[0]);
+
+    // Hanya aktif di grup dengan ID berikut
+    if (notification.chatId === '120363348122136023@g.us') {
+        // Pesan perpisahan untuk anggota yang keluar atau dikeluarkan
+        const leaveMessage = `✨🚀 And there it goes... ${contact.pushname || contact.name || contact.number} cabut dari grup ini! Good luck, bro/sis, keep shining where you land! 🌟`;
+
+        if (chat.isGroup) {
+            await chat.sendMessage(leaveMessage);
         }
     }
 });
@@ -158,8 +178,26 @@ client.on('message', async (msg) => {
     const chat = await msg.getChat();
 
     // Hanya aktif di grup dengan ID berikut
-    if (chat.id._serialized === '120363336251818783@g.us') {
+    if (chat.id._serialized === '120363348122136023@g.us') {
         switch (true) {
+            // Fitur Anti Link
+            case (/(http:\/\/|https:\/\/|wa\.me\/|chat\.whatsapp\.com)\S+/i.test(msg.body)): {
+                const contact = await client.getContactById(msg.author);
+                const isAdmin = msg.author === undefined || chat.participants.find(participant => participant.id._serialized === msg.author).isAdmin;
+                
+                // Abaikan link yang dikirim oleh admin
+                if (!isAdmin) {
+                    // Kirim peringatan
+                    chat.sendMessage(`ANTI WA ME 「 🔵 」\n\nWa Me detected, maaf kamu akan di kick!`, {
+                        mentions: [contact]
+                    });
+                    // Hapus pesan yang mengandung link
+                    await msg.delete(true);
+                    // Kick pengguna yang mengirim link
+                    await chat.removeParticipants([msg.author]);
+                }
+                break;
+            }
             case (msg.hasMedia && msg.body === '#setpp'): {
                 const isAdmin = msg.author === undefined || chat.participants.find(participant => participant.id._serialized === msg.author).isAdmin;
                 if (isAdmin) {
@@ -249,7 +287,7 @@ Grup sukses ditutup 「 🔒 」
                     chat.sendMessage(lockMessage);
                     setTimeout(() => {
                         const closingMessage = `
-⏳ ORDER SEMENTARA DITUTUP ⏳
+⏳ close order ⏳
 💌 Terima kasih untuk setiap order hari ini! Kami siap melayani Anda kembali di kesempatan berikutnya.
 📢 Untuk pemesanan, kirim saja pesan ke PM, admin akan merespon ketika aktif.
 📞 Kontak Admin:
@@ -313,34 +351,14 @@ client.on('message', async (msg) => {
     const chat = await msg.getChat();
     const sender = await msg.getContact();
 
-    // Regular expression to detect http, https, and wa.me links
-    const linkPattern = /(http:\/\/|https:\/\/|wa\.me\/)\S+/gi;
-
-    // Anti-link feature for group chats
-    if (chat.isGroup && linkPattern.test(msg.body)) {
-        // Check if the sender is an admin
-        const participants = await chat.participants;
-        const senderIsAdmin = participants.some(participant => participant.id._serialized === sender.id._serialized && participant.isAdmin);
-
-        if (!senderIsAdmin) {
-            // Delete the message that contains the link
-            await msg.delete(true);
-
-            // Send warning message to the group
-            chat.sendMessage(`ANTI LINK 「 🔵 」\n\nLink terdeteksi, maaf @${sender.id.user} kamu akan di kick!`, { mentions: [sender] });
-
-            // Kick the member who sent the link
-            await chat.removeParticipants([sender.id._serialized]);
-        }
-    }
-
     // Batasi fitur hanya untuk grup tertentu
-    if (chat.isGroup && chat.id._serialized === '120363336251818783@g.us') {
+    if (chat.isGroup && chat.id._serialized === '120363348122136023@g.us') {
         switch (msg.body.toLowerCase()) {
             case 'menu':
                 let serviceList = `Halo Kak @${msg.author || msg.from}! 👋
 Berikut beberapa list layanan yang tersedia saat ini di ${chat.name} 🏦
-✍️ Daftar Layanan:
+📜 OUR EXCLUSIVE LIST 📜
+
 • PAYMENT - Untuk melihat opsi pembayaran
 `;
 
@@ -351,13 +369,12 @@ Berikut beberapa list layanan yang tersedia saat ini di ${chat.name} 🏦
                 });
 
                 serviceList += `
-Cara Mendapatkan Info:
-Ketik list key sesuai layanan yang diinginkan di atas.
-Contoh: Ketik PAYMENT untuk melihat opsi pembayaran.
-━━━━━━━━
-📍 Group: ${chat.name}
+💎 Mau lebih detail? Ketik list key yang ada di atas!
+🔑 Contoh: PAYMENT untuk informasi lebih lanjut.
+━━━━━━━━━━━━━━━━━━━ ⚜️
+🏪: ${chat.name} | Layanan Aplikasi premium
 ⏰ Jam: ${new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB
-KyRaBot တ`;
+━━━━━━━━━━━ kyrabot 💎`;
 
                 msg.reply(serviceList);
                 break;
@@ -969,13 +986,52 @@ client.on('message', async (message) => {
                 }
                 break;
             }
+            case message.body.startsWith('catat |'): {
+                const args = message.body.split('|').map(arg => arg.trim());
+                if (args.length === 4) {
+                    const [_, namaPengutang, totalUtang, nomorWhatsApp] = args;
+                    // Save debt information to the debt file
+                    debtData.push({
+                        namaPengutang,
+                        nomorWhatsApp,
+                        totalUtang,
+                        jatuhTempo: null
+                    });
+                    fs.writeFile(debtFilePath, JSON.stringify(debtData, null, 2), (error) => {
+                        if (error) {
+                            console.error('Error saving debt data:', error);
+                            message.reply('Terjadi kesalahan saat menyimpan data utang.');
+                        } else {
+                            message.reply(`Utang sebesar ${formatRupiah(totalUtang)} dari ${namaPengutang} dengan nomor ${nomorWhatsApp} berhasil dicatat.`);
+                        }
+                    });
+                } else {
+                    message.reply('Format pencatatan utang tidak valid. Gunakan format: catat | nama | totalutang | nomorwa');
+                }
+                break;
+            }
+            case message.body === 'listutang': {
+                if (debtData.length > 0) {
+                    let totalUtang = 0;
+                    let debtListMessage = 'Daftar Utang Saat Ini:\n';
+                    debtData.forEach((debt, index) => {
+                        totalUtang += parseFloat(debt.totalUtang);
+                        debtListMessage += `${index + 1}. Nama: ${debt.namaPengutang}, Nomor: ${debt.nomorWhatsApp}, Total Utang: ${formatRupiah(debt.totalUtang)}, Jatuh Tempo: ${debt.jatuhTempo || 'Belum ditentukan'}\n`;
+                    });
+                    debtListMessage += `\nTotal Utang Keseluruhan: ${formatRupiah(totalUtang)}`;
+                    message.reply(debtListMessage);
+                } else {
+                    message.reply('Tidak ada utang yang tercatat saat ini.');
+                }
+                break;
+            }
         }
     }
 });
 
 // Event handler untuk pesan yang diterima
 client.on('message', async (message) => {
-    const groupId = '120363336251818783@g.us';
+    const groupId = '120363348122136023@g.us';
     const chat = await message.getChat();
 
     // Mengecek apakah pesan berasal dari grup dengan ID yang diberikan
@@ -1172,11 +1228,40 @@ client.on('message', async msg => {
     const senderNumber = msg.from.split('@')[0];
 
     // Check if message is from the allowed admin
-    if (senderNumber === allowedNumber && !chat.isGroup) {
+    if (senderNumber === allowedNumber) {
         const command = msg.body.split(' ')[0].toLowerCase();
-        const args = msg.body.slice(command.length + 1).trim();
+        const args = msg.body.split('|').slice(1).join('|').trim();
 
         switch (command) {
+            case 'getidgc':
+                if (!chat.isGroup) {
+                    try {
+                        const chats = await client.getChats();
+                        const groupChats = chats.filter(chat => chat.isGroup);
+
+                        groupChats.forEach(groupChat => {
+                            const groupInfo = {
+                                id: groupChat.id._serialized,
+                                name: groupChat.name
+                            };
+
+                            // Store group information in JSON file
+                            groupDetails.push(groupInfo);
+                        });
+                        fs.writeFileSync(groupDetailsFilePath, JSON.stringify(groupDetails, null, 2));
+
+                        let replyMessage = 'Group details have been saved:\n';
+                        groupChats.forEach(groupChat => {
+                            replyMessage += `Group ID: ${groupChat.id._serialized}\nGroup Name: ${groupChat.name}\n`;
+                        });
+
+                        msg.reply(replyMessage);
+                    } catch (error) {
+                        console.error('Error retrieving group details:', error);
+                        msg.reply('Failed to retrieve group details.');
+                    }
+                }
+                break;
             case 'promote':
                 if (msg.hasMedia) {
                     const media = await msg.downloadMedia();
@@ -1184,84 +1269,53 @@ client.on('message', async msg => {
                         const promoteMessage = args;
                         // Send the image with caption to all groups
                         const chats = await client.getChats();
-                        chats.forEach(async groupChat => {
-                            if (groupChat.isGroup) {
-                                await groupChat.sendMessage(media, { caption: promoteMessage });
-                            }
-                        });
+                        const groupChats = chats.filter(chat => chat.isGroup);
+
+                        for (const groupChat of groupChats) {
+                            await groupChat.sendMessage(media, { caption: promoteMessage });
+                        }
+
                         msg.reply('Promotion image with caption has been sent to all groups.');
                     } else {
                         msg.reply('Please provide a caption for the promotion.');
                     }
-                } else if (args.length > 0) {
-                    const promoteMessage = args;
-                    // Send the message immediately to all groups
-                    const chats = await client.getChats();
-                    chats.forEach(async groupChat => {
-                        if (groupChat.isGroup) {
-                            await groupChat.sendMessage(promoteMessage);
-                        }
-                    });
-                    msg.reply('Promotion message has been sent to all groups.');
-                } else {
-                    msg.reply('Please provide a message or image with a caption to promote.');
-                }
-
-                // Schedule the message to be sent every 30 minutes
-                promoteInterval = setInterval(async () => {
-                    const chats = await client.getChats();
-                    if (msg.hasMedia && media) {
-                        chats.forEach(async groupChat => {
-                            if (groupChat.isGroup) {
-                                await groupChat.sendMessage(media, { caption: args });
-                            }
-                        });
-                    } else {
-                        chats.forEach(async groupChat => {
-                            if (groupChat.isGroup) {
-                                await groupChat.sendMessage(args);
-                            }
-                        });
+                } else if (args) {
+                    promotionMessage = args;
+                    if (promotionInterval) {
+                        clearInterval(promotionInterval);
                     }
-                }, 30 * 60 * 1000);
-                break;
 
-            case 'stoppromote':
-                if (promoteInterval) {
-                    clearInterval(promoteInterval);
-                    promoteInterval = null;
-                    msg.reply('Promotion has been stopped.');
+                    // Send the promotion message immediately and then every 30 minutes
+                    const sendPromotionMessage = async () => {
+                        const chats = await client.getChats();
+                        const groupChats = chats.filter(chat => chat.isGroup && chat.id._serialized !== excludedGroupId);
+
+                        for (const groupChat of groupChats) {
+                            await groupChat.sendMessage(promotionMessage);
+                        }
+                    };
+
+                    await sendPromotionMessage(); // Send immediately
+                    promotionInterval = setInterval(sendPromotionMessage, 30 * 60 * 1000); // Every 30 minutes
+
+                    msg.reply('Promotion message has been set and will be sent to all groups every 30 minutes, excluding the specified group.');
                 } else {
-                    msg.reply('No promotion is currently running.');
+                    msg.reply('Please provide the promotion message after the command.');
                 }
                 break;
-
-            case 'getidgc':
-                try {
-                    const chats = await client.getChats();
-                    const groupChats = chats.filter(chat => chat.isGroup);
-
-                    groupChats.forEach(groupChat => {
-                        const groupInfo = {
-                            id: groupChat.id._serialized,
-                            name: groupChat.name
-                        };
-
-                        // Store group information in JSON file
-                        groupDetails.push(groupInfo);
-                    });
-                    fs.writeFileSync(groupDetailsFilePath, JSON.stringify(groupDetails, null, 2));
-
-                    let replyMessage = 'Group details have been saved:\n';
-                    groupChats.forEach(groupChat => {
-                        replyMessage += `Group ID: ${groupChat.id._serialized}\nGroup Name: ${groupChat.name}\n`;
-                    });
-
-                    msg.reply(replyMessage);
-                } catch (error) {
-                    console.error('Error retrieving group details:', error);
-                    msg.reply('Failed to retrieve group details.');
+            case 'stoppromote':
+                if (!chat.isGroup) {
+                    if (promotionInterval) {
+                        clearInterval(promotionInterval);
+                        promotionInterval = null;
+                        msg.reply('Promotion messages have been stopped.');
+                    } else {
+                        msg.reply('There is no active promotion to stop.');
+                    }
                 }
+                break;
+            default:
+                // Handle any other commands if necessary
                 break;
         }
     }
@@ -1307,7 +1361,6 @@ Silakan bagikan tautan ini di media sosial!`);
         }
     }
 });
-
 
 client.on('message', async (msg) => {
     const chat = await msg.getChat();
@@ -1361,7 +1414,9 @@ client.on('message', async (msg) => {
 - *#out [amount]*: Deduct balance.
 - *#in [amount]*: Add balance.
 - *#utang | [name] | [number] | [amount] | [due]*: Set debt reminder.
-- *#rekaps : summarize all admin financial data
+- *catat | [nama] | [total utang] | [nowa]* : pencatatn utang
+- *listutang*:menampilkan semua list utang 
+- *#rekaps* : summarize all admin financial data
 
 ━━━━━━━━━━━
 
@@ -1378,7 +1433,6 @@ client.on('message', async (msg) => {
         }
     }
 });
-
 
 // Menghubungkan client
 client.initialize();
