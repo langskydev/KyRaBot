@@ -12,7 +12,6 @@ const client = new Client({
 
 // Define the group ID and the allowed group admin ID
 const groupId = '120363348122136023@g.us';
-const excludedGroupId = '120363348122136023@g.us';
 const allowedNumber = '6285714608649';
 
 // Load existing payment options from JSON file
@@ -157,21 +156,6 @@ Siap buat pengalaman top up tanpa ribet, cepat, dan murah? Let's go! 🔥
     }
 });
 
-// Event ketika anggota keluar atau dikeluarkan dari grup
-client.on('group_leave', async (notification) => {
-    const chat = await client.getChatById(notification.chatId);
-    const contact = await client.getContactById(notification.recipientIds[0]);
-
-    // Hanya aktif di grup dengan ID berikut
-    if (notification.chatId === '120363348122136023@g.us') {
-        // Pesan perpisahan untuk anggota yang keluar atau dikeluarkan
-        const leaveMessage = `✨🚀 And there it goes... ${contact.pushname || contact.name || contact.number} cabut dari grup ini! Good luck, bro/sis, keep shining where you land! 🌟`;
-
-        if (chat.isGroup) {
-            await chat.sendMessage(leaveMessage);
-        }
-    }
-});
 
 // Event ketika admin mengirim foto dengan keterangan #setpp atau mengubah deskripsi dengan #setdesgc atau mengubah nama grup dengan #setname atau menyetel ulang link dengan #reset atau menutup grup dengan cl atau membuka grup dengan op
 client.on('message', async (msg) => {
@@ -986,31 +970,46 @@ client.on('message', async (message) => {
                 }
                 break;
             }
-            case message.body.startsWith('catat |'): {
+            case message.body.startsWith('#catat |'): {
                 const args = message.body.split('|').map(arg => arg.trim());
                 if (args.length === 4) {
-                    const [_, namaPengutang, totalUtang, nomorWhatsApp] = args;
-                    // Save debt information to the debt file
-                    debtData.push({
-                        namaPengutang,
-                        nomorWhatsApp,
-                        totalUtang,
-                        jatuhTempo: null
-                    });
-                    fs.writeFile(debtFilePath, JSON.stringify(debtData, null, 2), (error) => {
-                        if (error) {
-                            console.error('Error saving debt data:', error);
-                            message.reply('Terjadi kesalahan saat menyimpan data utang.');
+                    const [_, namaPengutang, totalUtangStr, nomorWhatsApp] = args;
+                    const totalUtang = parseFloat(totalUtangStr);
+
+                    if (!isNaN(totalUtang)) {
+                        // Check if debtor already exists
+                        const existingDebt = debtData.find(debt => debt.namaPengutang === namaPengutang && debt.nomorWhatsApp === nomorWhatsApp);
+                        if (existingDebt) {
+                            // Update existing debt by adding the new amount to the current debt
+                            existingDebt.totalUtang = parseFloat(existingDebt.totalUtang) + totalUtang;
                         } else {
-                            message.reply(`Utang sebesar ${formatRupiah(totalUtang)} dari ${namaPengutang} dengan nomor ${nomorWhatsApp} berhasil dicatat.`);
+                            // Add new debt entry
+                            debtData.push({
+                                namaPengutang,
+                                nomorWhatsApp,
+                                totalUtang,
+                                jatuhTempo: null
+                            });
                         }
-                    });
+
+                        // Save debt information to the debt file
+                        fs.writeFile(debtFilePath, JSON.stringify(debtData, null, 2), (error) => {
+                            if (error) {
+                                console.error('Error saving debt data:', error);
+                                message.reply('Terjadi kesalahan saat menyimpan data utang.');
+                            } else {
+                                message.reply(`Utang sebesar ${formatRupiah(totalUtang)} dari ${namaPengutang} dengan nomor ${nomorWhatsApp} berhasil dicatat.`);
+                            }
+                        });
+                    } else {
+                        message.reply('Jumlah utang tidak valid. Gunakan format: catat | nama | totalutang | nomorwa');
+                    }
                 } else {
                     message.reply('Format pencatatan utang tidak valid. Gunakan format: catat | nama | totalutang | nomorwa');
                 }
                 break;
             }
-            case message.body === 'listutang': {
+            case message.body === '#listutang': {
                 if (debtData.length > 0) {
                     let totalUtang = 0;
                     let debtListMessage = 'Daftar Utang Saat Ini:\n';
@@ -1025,6 +1024,67 @@ client.on('message', async (message) => {
                 }
                 break;
             }
+            case message.body.startsWith('#bayar |'): {
+                const args = message.body.split('|').map(arg => arg.trim());
+                if (args.length === 3) {
+                    const [_, nama, totalDibayarStr] = args;
+                    const totalDibayar = parseFloat(totalDibayarStr);
+                    
+                    if (!isNaN(totalDibayar) && totalDibayar > 0) {
+                        const debtIndex = debtData.findIndex(debt => debt.namaPengutang.toLowerCase() === nama.toLowerCase());
+                        if (debtIndex !== -1) {
+                            let debt = debtData[debtIndex];
+                            debt.totalUtang -= totalDibayar;
+                            
+                            if (debt.totalUtang <= 0) {
+                                debtData.splice(debtIndex, 1);
+                                message.reply(`Utang dari ${nama} sudah lunas dan telah dihapus dari daftar.`);
+                            } else {
+                                fs.writeFile(debtFilePath, JSON.stringify(debtData, null, 2), (error) => {
+                                    if (error) {
+                                        console.error('Error saving debt data:', error);
+                                        message.reply('Terjadi kesalahan saat menyimpan data utang.');
+                                    } else {
+                                        message.reply(`Pembayaran sebesar ${formatRupiah(totalDibayar)} berhasil dicatat. Sisa utang ${nama} adalah ${formatRupiah(debt.totalUtang)}.`);
+                                    }
+                                });
+                            }
+                        } else {
+                            message.reply(`Tidak ditemukan utang atas nama ${nama}.`);
+                        }
+                    } else {
+                        message.reply('Format jumlah yang dibayar tidak valid. Gunakan format: bayar | nama | total yang dibayar');
+                    }
+                } else {
+                    message.reply('Format pembayaran utang tidak valid. Gunakan format: bayar | nama | total yang dibayar');
+                }
+                break;
+            }
+            
+            case message.body.startsWith('#lunas |'): {
+                const args = message.body.split('|').map(arg => arg.trim());
+                if (args.length === 2) {
+                    const [_, nama] = args;
+                    
+                    const debtIndex = debtData.findIndex(debt => debt.namaPengutang.toLowerCase() === nama.toLowerCase());
+                    if (debtIndex !== -1) {
+                        debtData.splice(debtIndex, 1);
+                        fs.writeFile(debtFilePath, JSON.stringify(debtData, null, 2), (error) => {
+                            if (error) {
+                                console.error('Error saving debt data:', error);
+                                message.reply('Terjadi kesalahan saat menyimpan data utang.');
+                            } else {
+                                message.reply(`Utang dari ${nama} sudah lunas dan telah dihapus dari daftar.`);
+                            }
+                        });
+                    } else {
+                        message.reply(`Tidak ditemukan utang atas nama ${nama}.`);
+                    }
+                } else {
+                    message.reply('Format pelunasan utang tidak valid. Gunakan format: lunas | nama');
+                }
+                break;
+            }            
         }
     }
 });
@@ -1262,102 +1322,62 @@ client.on('message', async msg => {
                     }
                 }
                 break;
-            case 'promote':
-                if (msg.hasMedia) {
-                    const media = await msg.downloadMedia();
-                    if (args.length > 0) {
-                        const promoteMessage = args;
-                        // Send the image with caption to all groups
-                        const chats = await client.getChats();
-                        const groupChats = chats.filter(chat => chat.isGroup);
-
-                        for (const groupChat of groupChats) {
-                            await groupChat.sendMessage(media, { caption: promoteMessage });
+                case 'promote':
+                    if (msg.hasMedia) {
+                        const media = await msg.downloadMedia();
+                        if (args.length > 0) {
+                            const promoteMessage = args;
+                            // Send the image with caption to all groups excluding the bot's group and specified group
+                            const chats = await client.getChats();
+                            const groupChats = chats.filter(chat => chat.isGroup && chat.id._serialized !== '120363348122136023@g.us' && chat.id._serialized !== msg.from);
+                
+                            for (const groupChat of groupChats) {
+                                await groupChat.sendMessage(media, { caption: promoteMessage });
+                            }
+                
+                            msg.reply('Promotion image with caption has been sent to all groups, excluding the specified ones.');
+                        } else {
+                            msg.reply('Please provide a caption for the promotion.');
                         }
-
-                        msg.reply('Promotion image with caption has been sent to all groups.');
-                    } else {
-                        msg.reply('Please provide a caption for the promotion.');
-                    }
-                } else if (args) {
-                    promotionMessage = args;
-                    if (promotionInterval) {
-                        clearInterval(promotionInterval);
-                    }
-
-                    // Send the promotion message immediately and then every 30 minutes
-                    const sendPromotionMessage = async () => {
-                        const chats = await client.getChats();
-                        const groupChats = chats.filter(chat => chat.isGroup && chat.id._serialized !== excludedGroupId);
-
-                        for (const groupChat of groupChats) {
-                            await groupChat.sendMessage(promotionMessage);
+                    } else if (args) {
+                        const promotionMessage = args;
+                        if (promotionInterval) {
+                            clearInterval(promotionInterval);
                         }
-                    };
-
-                    await sendPromotionMessage(); // Send immediately
-                    promotionInterval = setInterval(sendPromotionMessage, 30 * 60 * 1000); // Every 30 minutes
-
-                    msg.reply('Promotion message has been set and will be sent to all groups every 30 minutes, excluding the specified group.');
-                } else {
-                    msg.reply('Please provide the promotion message after the command.');
-                }
-                break;
-            case 'stoppromote':
-                if (!chat.isGroup) {
-                    if (promotionInterval) {
-                        clearInterval(promotionInterval);
-                        promotionInterval = null;
-                        msg.reply('Promotion messages have been stopped.');
+                
+                        // Send the promotion message immediately and then every 30 minutes, excluding specific groups
+                        const sendPromotionMessage = async () => {
+                            const chats = await client.getChats();
+                            const groupChats = chats.filter(chat => chat.isGroup && chat.id._serialized !== '120363348122136023@g.us' && chat.id._serialized !== msg.from);
+                
+                            for (const groupChat of groupChats) {
+                                await groupChat.sendMessage(promotionMessage);
+                            }
+                        };
+                
+                        await sendPromotionMessage(); // Send immediately
+                        promotionInterval = setInterval(sendPromotionMessage, 30 * 60 * 1000); // Every 30 minutes
+                
+                        msg.reply('Promotion message has been set and will be sent to all groups every 30 minutes, excluding the specified group.');
                     } else {
-                        msg.reply('There is no active promotion to stop.');
+                        msg.reply('Please provide the promotion message after the command.');
                     }
-                }
-                break;
+                    break;
+                case 'stoppromote':
+                    if (!chat.isGroup) {
+                        if (promotionInterval) {
+                            clearInterval(promotionInterval);
+                            promotionInterval = null;
+                            msg.reply('Promotion messages have been stopped.');
+                        } else {
+                            msg.reply('There is no active promotion to stop.');
+                        }
+                    }
+                    break;
+                
             default:
                 // Handle any other commands if necessary
                 break;
-        }
-    }
-});
-
-client.on('message', async (msg) => {
-    const chat = await msg.getChat();
-
-    // Hanya proses jika pesan berasal dari admin dan bukan grup
-    if (!chat.isGroup && msg.from === allowedNumber + '@c.us') {
-        const parts = msg.body.split('|');
-        if (parts[0].trim().toLowerCase() === 'generate_link') {
-            const productKeyword = parts[1]?.trim().toLowerCase();
-            if (productKeyword) {
-                // Load existing product options from JSON file
-                const productFilePath = path.join(__dirname, 'data', 'produk', 'produkOptions.json');
-                let productOptions = [];
-                if (fs.existsSync(productFilePath)) {
-                    try {
-                        productOptions = JSON.parse(fs.readFileSync(productFilePath, 'utf-8'));
-                    } catch (error) {
-                        console.error('Error reading product options:', error);
-                        msg.reply('Terjadi kesalahan saat membaca data produk.');
-                        return;
-                    }
-                }
-
-                // Cari produk berdasarkan keyword
-                const product = productOptions.find(prod => prod.keyword.toLowerCase() === productKeyword);
-                if (product) {
-                    // Generate free link produk using a public link (contoh menggunakan layanan link gratis)
-                    const productLink = `https://freeproductviewer.com/products/${encodeURIComponent(product.keyword)}`;
-                    msg.reply(`Tautan produk untuk *${product.keyword}* berhasil dibuat:
-${productLink}
-
-Silakan bagikan tautan ini di media sosial!`);
-                } else {
-                    msg.reply(`Produk dengan keyword "${productKeyword}" tidak ditemukan.`);
-                }
-            } else {
-                msg.reply('Format tidak valid. Gunakan format: generate_link | keywordproduk');
-            }
         }
     }
 });
@@ -1414,8 +1434,10 @@ client.on('message', async (msg) => {
 - *#out [amount]*: Deduct balance.
 - *#in [amount]*: Add balance.
 - *#utang | [name] | [number] | [amount] | [due]*: Set debt reminder.
-- *catat | [nama] | [total utang] | [nowa]* : pencatatn utang
-- *listutang*:menampilkan semua list utang 
+- *#catat | [nama] | [total utang] | [nowa]* : pencatatn utang
+- *#listutang*:menampilkan semua list utang
+- *#bayar  | [nama] | [jumlah]*: bayar utang
+- *#lunas | [nama] *: list utang yang sudah lunas
 - *#rekaps* : summarize all admin financial data
 
 ━━━━━━━━━━━
